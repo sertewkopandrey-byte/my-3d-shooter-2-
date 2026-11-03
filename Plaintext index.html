@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>3D CS Shooter</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; font-family: Arial, sans-serif; user-select: none; }
+        #crosshair { position: absolute; top: 50%; left: 50%; width: 10px; height: 10px; border: 2px solid lime; border-radius: 50%; transform: translate(-50%, -50%); pointer-events: none; }
+        #hud { position: absolute; bottom: 20px; left: 20px; color: #fff; font-size: 24px; font-weight: bold; text-shadow: 2px 2px 4px #000; pointer-events: none; background: rgba(0,0,0,0.5); padding: 10px 20px; border-radius: 8px; }
+        #instructions { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; text-align: center; font-size: 20px; background: rgba(0,0,0,0.85); padding: 30px; border-radius: 12px; cursor: pointer; border: 2px solid #555; }
+        #instructions h2 { margin-top: 0; color: #ff4444; }
+    </style>
+</head>
+<body>
+
+    <div id="crosshair"></div>
+    <div id="hud">Убийств: <span id="score">0</span> | Здоровье: 100</div>
+    <div id="instructions">
+        <h2>3D CS SHOOTER</h2>
+        <p>Кликните сюда, чтобы начать игру</p>
+        <small><b>W, A, S, D</b> — Движение<br><b>Мышь</b> — Обзор / Прицел<br><b>Левая кнопка мыши</b> — Стрельба<br><b>ESC</b> — Освободить мышь</small>
+    </div>
+
+    <!-- Подключаем библиотеку 3D-графики Three.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+    <script>
+        let scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x111115);
+        scene.fog = new THREE.FogExp2(0x111115, 0.02);
+
+        let camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        let renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // Освещение карты
+        let ambientLight = new THREE.AmbientLight(0x666666);
+        scene.add(ambientLight);
+
+        let dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        dirLight.position.set(20, 40, 20);
+        scene.add(dirLight);
+
+        // Создаем пол (арена)
+        let floorGeo = new THREE.PlaneGeometry(100, 100);
+        let floorMat = new THREE.MeshLambertMaterial({ color: 0x222225 });
+        let floor = new THREE.Mesh(floorGeo, floorMat);
+        floor.rotation.x = -Math.PI / 2;
+        scene.add(floor);
+
+        // Добавляем стены по периметру
+        let wallMat = new THREE.MeshLambertMaterial({ color: 0x444450 });
+        let wallGeo1 = new THREE.BoxGeometry(100, 5, 2);
+        
+        let wall1 = new THREE.Mesh(wallGeo1, wallMat);
+        wall1.position.set(0, 2.5, -50);
+        scene.add(wall1);
+
+        let wall2 = new THREE.Mesh(wallGeo1, wallMat);
+        wall2.position.set(0, 2.5, 50);
+        scene.add(wall2);
+
+        let wallGeo2 = new THREE.BoxGeometry(2, 5, 100);
+        let wall3 = new THREE.Mesh(wallGeo2, wallMat);
+        wall3.position.set(-50, 2.5, 0);
+        scene.add(wall3);
+
+        let wall4 = new THREE.Mesh(wallGeo2, wallMat);
+        wall4.position.set(50, 2.5, 0);
+        scene.add(wall4);
+
+        // Спавним ботов-врагов
+        let enemies = [];
+        let kills = 0;
+
+        function spawnEnemy() {
+            let enemyGeo = new THREE.BoxGeometry(1.2, 2.2, 1.2);
+            let enemyMat = new THREE.MeshLambertMaterial({ color: 0xcc2222 });
+            let enemy = new THREE.Mesh(enemyGeo, enemyMat);
+            
+            // Случайная позиция на карте
+            enemy.position.set((Math.random() - 0.5) * 80, 1.1, (Math.random() - 0.5) * 80);
+            scene.add(enemy);
+            enemies.push(enemy);
+        }
+
+        for(let i = 0; i < 6; i++) {
+            spawnEnemy();
+        }
+
+        // Управление персонажем
+        camera.position.set(0, 1.6, 10);
+        let moveForward = false, moveBackward = false, moveLeft = false, moveRight = false;
+        let prevTime = performance.now();
+        let velocity = new THREE.Vector3();
+
+        document.addEventListener('keydown', (e) => {
+            if(e.code === 'KeyW') moveForward = true;
+            if(e.code === 'KeyS') moveBackward = true;
+            if(e.code === 'KeyA') moveLeft = true;
+            if(e.code === 'KeyD') moveRight = true;
+        });
+
+        document.addEventListener('keyup', (e) => {
+            if(e.code === 'KeyW') moveForward = false;
+            if(e.code === 'KeyS') moveBackward = false;
+            if(e.code === 'KeyA') moveLeft = false;
+            if(e.code === 'KeyD') moveRight = false;
+        });
+
+        // Захват мыши для обзора
+        let instructions = document.getElementById('instructions');
+        instructions.addEventListener('click', () => {
+            document.body.requestPointerLock();
+        });
+
+        document.addEventListener('pointerlockchange', () => {
+            if (document.pointerLockElement === document.body) {
+                instructions.style.display = 'none';
+            } else {
+                instructions.style.display = 'block';
+            }
+        });
+
+        document.body.addEventListener('mousemove', (e) => {
+            if (document.pointerLockElement === document.body) {
+                camera.rotation.y -= e.movementX * 0.003;
+                let pitch = camera.rotation.x - e.movementY * 0.003;
+                // Ограничение угла обзора по вертикали
+                camera.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, pitch));
+            }
+        });
+
+        // Стрельба по клику мыши
+        document.addEventListener('mousedown', (e) => {
+            if (document.pointerLockElement === document.body && e.button === 0) {
+                let raycaster = new THREE.Raycaster();
+                raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+                let intersects = raycaster.intersectObjects(enemies);
+
+                if (intersects.length > 0) {
+                    let hitEnemy = intersects[0].object;
+                    scene.remove(hitEnemy);
+                    enemies = enemies.filter(en => en !== hitEnemy);
+                    
+                    kills++;
+                    document.getElementById('score').innerText = kills;
+
+                    // Создаем нового бота взамен убитого
+                    setTimeout(spawnEnemy, 1000);
+                }
+            }
+        });
+
+        // Игровой цикл анимации и физики движения
+        function animate() {
+            requestAnimationFrame(animate);
+            let time = performance.now();
+            let delta = (time - prevTime) / 1000;
+
+            velocity.x -= velocity.x * 10.0 * delta;
+            velocity.z -= velocity.z * 10.0 * delta;
+
+            if (moveForward) velocity.z -= 45.0 * delta;
+            if (moveBackward) velocity.z += 45.0 * delta;
+            if (moveLeft) velocity.x -= 45.0 * delta;
+            if (moveRight) velocity.x += 45.0 * delta;
+
+            camera.translateX(velocity.x * delta);
+            camera.translateZ(velocity.z * delta);
+            camera.position.y = 1.6; // Фиксированная высота глаз
+
+            // Плавное движение врагов в сторону игрока
+            enemies.forEach(enemy => {
+                enemy.lookAt(camera.position.x, enemy.position.y, camera.position.z);
+                enemy.translateZ(0.03); // Скорость бота
+            });
+
+            prevTime = time;
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        // Адаптация под размер окна браузера
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
